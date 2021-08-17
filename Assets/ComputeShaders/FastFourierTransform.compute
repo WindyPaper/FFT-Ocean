@@ -1,4 +1,5 @@
-﻿#pragma kernel PrecomputeTwiddleFactorsAndInputIndices
+﻿#pragma enable_d3d11_debug_symbols
+#pragma kernel PrecomputeTwiddleFactorsAndInputIndices
 #pragma kernel HorizontalStepFFT
 #pragma kernel VerticalStepFFT
 #pragma kernel HorizontalStepInverseFFT
@@ -71,12 +72,163 @@ void VerticalStepFFT(uint3 id : SV_DispatchThreadID)
 	}
 }
 
-[numthreads(8, 8, 1)]
+groupshared float2 ButterFlyCacheData[256];
+
+void fft(inout float2 h[2], uint thread_id, uint N)
+{
+	//butterfly	
+	bool flag = false;
+	float scale = PI * 0.5f; // Pi
+							 //stage 0 //cos0 = 1, sin0 = 0
+	{
+		float2 dht = h[1];
+
+		h[1] = h[0] - dht;
+		h[0] = h[0] + dht;
+		
+		flag = thread_id & 1;
+		if (flag)
+		{
+			ButterFlyCacheData[thread_id] = h[0];
+		}
+		else
+		{
+			ButterFlyCacheData[thread_id] = h[1];
+		}
+
+		GroupMemoryBarrier();
+	}
+
+	uint stage_id = 1;
+	for (uint stage = 2; stage < N; stage <<= 1, scale *= 0.5)
+	{
+		uint i = thread_id ^ (stage - 1); //pair index
+		uint j = thread_id & (stage - 1); //curr n index
+
+		if (flag)
+		{
+			h[0] = ButterFlyCacheData[i];
+		}
+		else
+		{
+			h[1] = ButterFlyCacheData[i];
+		}
+
+		/*float e_sin, e_cos;
+		sincos(j * scale, e_sin, e_cos);
+		float2 omega_j = float2(e_cos, e_sin);*/
+
+		uint b = N >> (stage_id + 1);
+		stage_id++;
+		float2 mult = 2 * PI * float2(0, 1) / N;		
+		float2 twiddle = ComplexExp(-mult * ((j / b) * b));
+		float e_cos = twiddle.x;
+		float e_sin = twiddle.y;
+		float2 omega_j = float2(e_cos, e_sin);		
+
+		float2 dht = ComplexMult(omega_j, h[1]);
+
+		h[1] = h[0] - dht;
+		h[0] = h[0] + dht;
+
+		flag = thread_id & stage;
+
+		if (flag)
+		{
+			ButterFlyCacheData[i] = h[0];
+		}
+		else
+		{
+			ButterFlyCacheData[i] = h[1];
+		}
+
+		GroupMemoryBarrierWithGroupSync();
+	}
+}
+
+void fft2(inout float2 h[2], uint x, uint N)
+{
+	//butterfly	
+	bool flag = false;
+	float scale = PI * 0.5f; // Pi
+							 //stage 0 //cos0 = 1, sin0 = 0
+	{
+		float2 dht = h[1];
+
+		h[1] = h[0] - dht;
+		h[0] = h[0] + dht;
+
+		flag = x & 1;
+		if (flag)
+		{
+			ButterFlyCacheData[x] = h[0];
+		}
+		else
+		{
+			ButterFlyCacheData[x] = h[1];
+		}
+
+		GroupMemoryBarrierWithGroupSync();
+	}
+
+	uint stage_id = 1;
+	for (uint stage = 2; stage < N; stage <<= 1, scale *= 0.5)
+	{
+		float4 data = PrecomputedData[uint2(stage_id, x)];
+		uint i = data.w; //thread_id ^ (stage - 1); //pair index
+		uint j = data.z; //thread_id & (stage - 1); //curr n index
+
+		if (flag)
+		{
+			h[0] = ButterFlyCacheData[i];
+		}
+		else
+		{
+			h[1] = ButterFlyCacheData[i];
+		}
+
+		/*float e_sin, e_cos;
+		sincos(j * scale, e_sin, e_cos);
+		float2 omega_j = float2(e_cos, e_sin);*/
+
+		//uint b = N >> (stage_id + 1);
+		stage_id++;
+		//float2 mult = 2 * PI * float2(0, 1) / N;
+		//float2 twiddle = ComplexExp(-mult * ((j / b) * b));
+		//float e_cos = twiddle.x;
+		//float e_sin = twiddle.y;
+		//float2 omega_j = float2(e_cos, e_sin);
+
+		float2 omega_j = float2(data.x, data.y);
+
+		float2 dht = ComplexMult(omega_j, h[1]);
+
+		h[1] = h[0] - dht;
+		h[0] = h[0] + dht;
+
+		flag = x & stage;
+
+		if (flag)
+		{
+			ButterFlyCacheData[i] = h[0];
+		}
+		else
+		{
+			ButterFlyCacheData[i] = h[1];
+		}
+
+		GroupMemoryBarrierWithGroupSync();
+	}
+}
+
+groupshared float2 FullButterFlyCacheData[256];
+
+[numthreads(256, 1, 1)]
 void HorizontalStepInverseFFT(uint3 id : SV_DispatchThreadID)
 {
-	float4 data = PrecomputedData[uint2(Step, id.x)];
-	uint2 inputsIndices = (uint2)data.ba;
-	if (PingPong)
+	//float4 data = PrecomputedData[uint2(Step, id.x)];
+	//uint2 inputsIndices = (uint2)data.ba;
+	/*if (PingPong)
 	{
 		Buffer1[id.xy] = Buffer0[uint2(inputsIndices.x, id.y)]
 			+ ComplexMult(float2(data.r, -data.g), Buffer0[uint2(inputsIndices.y, id.y)]);
@@ -85,13 +237,88 @@ void HorizontalStepInverseFFT(uint3 id : SV_DispatchThreadID)
 	{
 		Buffer0[id.xy] = Buffer1[uint2(inputsIndices.x, id.y)]
 			+ ComplexMult(float2(data.r, -data.g), Buffer1[uint2(inputsIndices.y, id.y)]);
-	}
+	}*/
+
+	//const uint N = 256;
+	//const uint Half_N = N / 2;
+
+	//uint Column = id.x * 2;
+	//uint Row = id.y;
+	//uint ReverseColumnIdx = reversebits(Column) >> (32 - 8);
+	//uint PairColumnIdx = ReverseColumnIdx + Half_N;
+
+	//uint2 Idx0 = uint2(ReverseColumnIdx, Row);
+	//uint2 Idx1 = uint2(PairColumnIdx, Row);
+
+	//float2 h[2];
+	//h[0] = Buffer0[Idx0];
+	//h[1] = Buffer0[Idx1];
+	//h[1].y *= -1;
+
+	////loop
+	//uint thread_id = id.x;
+
+	//fft2(h, thread_id, N);
+	//
+
+	//uint2 BufferIdx = id.xy;
+	//Buffer1[BufferIdx] = h[0];
+	//Buffer1[BufferIdx + uint2(Half_N, 0)] = h[1];
+
+	const uint N = 256;
+	uint thread_id = id.x;
+	float2 CacheH;
+	float4 data = PrecomputedData[uint2(0, id.x)];
+	uint2 inputsIndices = (uint2)data.ba;	
+	//{
+		FullButterFlyCacheData[id.x] = Buffer0[uint2(inputsIndices.x, id.y)]
+			+ ComplexMult(float2(data.r, -data.g), Buffer0[uint2(inputsIndices.y, id.y)]);	
+
+		CacheH = FullButterFlyCacheData[id.x];
+
+		GroupMemoryBarrierWithGroupSync();
+
+		uint logSize = 8;// (uint)log2(N);
+
+		//uint stage_no = 1;
+		//[unroll(8)]
+
+
+		for (uint stage = 1; stage < logSize; stage++)
+		{
+			float4 data = PrecomputedData[uint2(stage, id.x)];
+			uint2 inputsIndices = (uint2)data.ba;
+			//stage_no++;
+
+			//GroupMemoryBarrierWithGroupSync();
+
+			/*FullButterFlyCacheData[id.x] = FullButterFlyCacheData[inputsIndices.x]
+				+ ComplexMult(float2(data.r, -data.g), FullButterFlyCacheData[inputsIndices.y]);*/
+			CacheH = FullButterFlyCacheData[inputsIndices.x]
+				+ ComplexMult(float2(data.r, -data.g), FullButterFlyCacheData[inputsIndices.y]);
+
+			GroupMemoryBarrierWithGroupSync();
+
+			FullButterFlyCacheData[id.x] = CacheH;
+
+			GroupMemoryBarrierWithGroupSync();
+		}		
+
+		
+	//}
+	GroupMemoryBarrierWithGroupSync();
+
+	Buffer1[id.xy] = FullButterFlyCacheData[id.x];
+	//Buffer1[id.xy+uint2(N/2, 0)] = h[1];
+	//Buffer1[id.xy] = float2(1.0, 0.0);
+
+	GroupMemoryBarrierWithGroupSync();
 }
 
-[numthreads(8, 8, 1)]
+[numthreads(256, 1, 1)]
 void VerticalStepInverseFFT(uint3 id : SV_DispatchThreadID)
 {
-	float4 data = PrecomputedData[uint2(Step, id.y)];
+	/*float4 data = PrecomputedData[uint2(Step, id.y)];
 	uint2 inputsIndices = (uint2)data.ba;
 	if (PingPong)
 	{
@@ -102,7 +329,72 @@ void VerticalStepInverseFFT(uint3 id : SV_DispatchThreadID)
 	{
 		Buffer0[id.xy] = Buffer1[uint2(id.x, inputsIndices.x)]
 			+ ComplexMult(float2(data.r, -data.g), Buffer1[uint2(id.x, inputsIndices.y)]);
-	}
+	}*/
+
+	//const uint N = 256;
+	//const uint Half_N = N / 2;
+
+	//uint Row = id.x * 2;
+	//uint Column = id.y;
+	//uint ReverseRowIdx = reversebits(Row) >> (32 - 8);
+	//uint PairRowIdx = Half_N - ReverseRowIdx;
+
+	//uint2 Idx0 = uint2(Column, ReverseRowIdx);
+	//uint2 Idx1 = uint2(Column, PairRowIdx);
+
+	//float2 h[2];
+	//h[0] = Buffer1[Idx0];
+	//h[1] = Buffer1[Idx1];
+	//h[1].y *= -1;
+
+	////loop
+	//uint thread_id = id.x;
+
+	//fft2(h, thread_id, N);
+
+	//uint2 BufferIdx = uint2(Column, id.x);
+	//Buffer0[BufferIdx] = h[0];
+	//Buffer0[BufferIdx + uint2(0, Half_N)] = h[1];
+
+	const uint N = 256;
+	float4 data = PrecomputedData[uint2(0, id.x)];
+	float2 CacheH;
+	uint2 inputsIndices = (uint2)data.ba;
+	//{
+		FullButterFlyCacheData[id.x] = Buffer1[uint2(id.y, inputsIndices.x)]
+			+ ComplexMult(float2(data.r, -data.g), Buffer1[uint2(id.y, inputsIndices.y)]);
+
+		GroupMemoryBarrierWithGroupSync();
+
+		//uint stage_no = 1;
+		uint logSize = 8;// (uint)log2(N);
+		[unroll(8)]
+		for (uint stage = 1; stage < logSize; stage++)
+		{
+			float4 data = PrecomputedData[uint2(stage, id.x)];
+			uint2 inputsIndices = (uint2)data.ba;
+			//stage_no++;
+
+			//GroupMemoryBarrierWithGroupSync();
+
+			CacheH = FullButterFlyCacheData[inputsIndices.x]
+				+ ComplexMult(float2(data.r, -data.g), FullButterFlyCacheData[inputsIndices.y]);
+
+			GroupMemoryBarrierWithGroupSync();
+
+			FullButterFlyCacheData[id.x] = CacheH;
+
+			GroupMemoryBarrierWithGroupSync();
+		}
+
+		//AllMemoryBarrierWithGroupSync();
+	//}
+
+	GroupMemoryBarrierWithGroupSync();
+
+	Buffer0[id.yx] = FullButterFlyCacheData[id.x];
+
+	GroupMemoryBarrierWithGroupSync();
 }
 
 [numthreads(8, 8, 1)]

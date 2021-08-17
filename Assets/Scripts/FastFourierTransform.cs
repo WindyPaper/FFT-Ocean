@@ -84,24 +84,29 @@ public class FastFourierTransform
         fftShader.SetTexture(KERNEL_HORIZONTAL_STEP_IFFT, PROP_ID_PRECOMPUTED_DATA, precomputedData);
         fftShader.SetTexture(KERNEL_HORIZONTAL_STEP_IFFT, PROP_ID_BUFFER0, input);
         fftShader.SetTexture(KERNEL_HORIZONTAL_STEP_IFFT, PROP_ID_BUFFER1, buffer);
-        for (int i = 0; i < logSize; i++)
-        {
-            pingPong = !pingPong;
-            fftShader.SetInt(PROP_ID_STEP, i);
-            fftShader.SetBool(PROP_ID_PINGPONG, pingPong);
-            fftShader.Dispatch(KERNEL_HORIZONTAL_STEP_IFFT, size / LOCAL_WORK_GROUPS_X, size / LOCAL_WORK_GROUPS_Y, 1);
-        }
+        //for (int i = 0; i < logSize; i++)
+        //{
+        //    pingPong = !pingPong;
+        //    fftShader.SetInt(PROP_ID_STEP, i);
+        //    fftShader.SetBool(PROP_ID_PINGPONG, pingPong);
+        //    fftShader.Dispatch(KERNEL_HORIZONTAL_STEP_IFFT, size / LOCAL_WORK_GROUPS_X, size / LOCAL_WORK_GROUPS_Y, 1);
+        //}
+        pingPong = !pingPong;
+        //fftShader.Dispatch(KERNEL_HORIZONTAL_STEP_IFFT, 1, size/2+1, 1);
+        fftShader.Dispatch(KERNEL_HORIZONTAL_STEP_IFFT, 1, size, 1);
 
         fftShader.SetTexture(KERNEL_VERTICAL_STEP_IFFT, PROP_ID_PRECOMPUTED_DATA, precomputedData);
         fftShader.SetTexture(KERNEL_VERTICAL_STEP_IFFT, PROP_ID_BUFFER0, input);
         fftShader.SetTexture(KERNEL_VERTICAL_STEP_IFFT, PROP_ID_BUFFER1, buffer);
-        for (int i = 0; i < logSize; i++)
-        {
-            pingPong = !pingPong;
-            fftShader.SetInt(PROP_ID_STEP, i);
-            fftShader.SetBool(PROP_ID_PINGPONG, pingPong);
-            fftShader.Dispatch(KERNEL_VERTICAL_STEP_IFFT, size / LOCAL_WORK_GROUPS_X, size / LOCAL_WORK_GROUPS_Y, 1);
-        }
+        //for (int i = 0; i < logSize; i++)
+        //{
+        //    pingPong = !pingPong;
+        //    fftShader.SetInt(PROP_ID_STEP, i);
+        //    fftShader.SetBool(PROP_ID_PINGPONG, pingPong);
+        //    fftShader.Dispatch(KERNEL_VERTICAL_STEP_IFFT, size / LOCAL_WORK_GROUPS_X, size / LOCAL_WORK_GROUPS_Y, 1);
+        //}
+        pingPong = !pingPong;
+        fftShader.Dispatch(KERNEL_VERTICAL_STEP_IFFT, 1, size, 1);
 
         if (pingPong && outputToInput)
         {
