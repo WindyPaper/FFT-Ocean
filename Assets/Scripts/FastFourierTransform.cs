@@ -108,29 +108,29 @@ public class FastFourierTransform
         pingPong = !pingPong;
         fftShader.Dispatch(KERNEL_VERTICAL_STEP_IFFT, 1, size, 1);
 
-        if (pingPong && outputToInput)
-        {
-            Graphics.Blit(buffer, input);
-        }
+        //if (pingPong && outputToInput)
+        //{
+        //    Graphics.Blit(buffer, input);
+        //}
 
-        if (!pingPong && !outputToInput)
-        {
-            Graphics.Blit(input, buffer);
-        }
+        //if (!pingPong && !outputToInput)
+        //{
+        //    Graphics.Blit(input, buffer);
+        //}
 
-        if (permute)
-        {
-            fftShader.SetInt(PROP_ID_SIZE, size);
-            fftShader.SetTexture(KERNEL_PERMUTE, PROP_ID_BUFFER0, outputToInput ? input : buffer);
-            fftShader.Dispatch(KERNEL_PERMUTE, size / LOCAL_WORK_GROUPS_X, size / LOCAL_WORK_GROUPS_Y, 1);
-        }
+        //if (permute)
+        //{
+        //    fftShader.SetInt(PROP_ID_SIZE, size);
+        //    fftShader.SetTexture(KERNEL_PERMUTE, PROP_ID_BUFFER0, outputToInput ? input : buffer);
+        //    fftShader.Dispatch(KERNEL_PERMUTE, size / LOCAL_WORK_GROUPS_X, size / LOCAL_WORK_GROUPS_Y, 1);
+        //}
         
-        if (scale)
-        {
-            fftShader.SetInt(PROP_ID_SIZE, size);
-            fftShader.SetTexture(KERNEL_SCALE, PROP_ID_BUFFER0, outputToInput ? input : buffer);
-            fftShader.Dispatch(KERNEL_SCALE, size / LOCAL_WORK_GROUPS_X, size / LOCAL_WORK_GROUPS_Y, 1);
-        }
+        //if (scale)
+        //{
+        //    fftShader.SetInt(PROP_ID_SIZE, size);
+        //    fftShader.SetTexture(KERNEL_SCALE, PROP_ID_BUFFER0, outputToInput ? input : buffer);
+        //    fftShader.Dispatch(KERNEL_SCALE, size / LOCAL_WORK_GROUPS_X, size / LOCAL_WORK_GROUPS_Y, 1);
+        //}
     }
 
     RenderTexture PrecomputeTwiddleFactorsAndInputIndices()
