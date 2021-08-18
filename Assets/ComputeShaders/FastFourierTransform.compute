@@ -174,9 +174,9 @@ void fft2(inout float2 h[2], uint x, uint N)
 	uint stage_id = 1;
 	for (uint stage = 2; stage < N; stage <<= 1, scale *= 0.5)
 	{
-		float4 data = PrecomputedData[uint2(stage_id, x)];
-		uint i = data.w; //thread_id ^ (stage - 1); //pair index
-		uint j = data.z; //thread_id & (stage - 1); //curr n index
+		//float4 data = PrecomputedData[uint2(stage_id, x)];
+		uint i = x ^ (stage - 1); //pair index
+		uint j = x & (stage - 1); //curr n index
 
 		if (flag)
 		{
@@ -187,19 +187,19 @@ void fft2(inout float2 h[2], uint x, uint N)
 			h[1] = ButterFlyCacheData[i];
 		}
 
-		/*float e_sin, e_cos;
+		float e_sin, e_cos;
 		sincos(j * scale, e_sin, e_cos);
-		float2 omega_j = float2(e_cos, e_sin);*/
+		float2 omega_j = float2(e_cos, e_sin);
 
 		//uint b = N >> (stage_id + 1);
-		stage_id++;
+		//stage_id++;
 		//float2 mult = 2 * PI * float2(0, 1) / N;
 		//float2 twiddle = ComplexExp(-mult * ((j / b) * b));
 		//float e_cos = twiddle.x;
 		//float e_sin = twiddle.y;
 		//float2 omega_j = float2(e_cos, e_sin);
 
-		float2 omega_j = float2(data.x, data.y);
+		//float2 omega_j = float2(data.x, data.y);
 
 		float2 dht = ComplexMult(omega_j, h[1]);
 
@@ -223,7 +223,7 @@ void fft2(inout float2 h[2], uint x, uint N)
 
 groupshared float2 FullButterFlyCacheData[256];
 
-[numthreads(256, 1, 1)]
+[numthreads(128, 1, 1)]
 void HorizontalStepInverseFFT(uint3 id : SV_DispatchThreadID)
 {
 	//float4 data = PrecomputedData[uint2(Step, id.x)];
@@ -239,80 +239,161 @@ void HorizontalStepInverseFFT(uint3 id : SV_DispatchThreadID)
 			+ ComplexMult(float2(data.r, -data.g), Buffer1[uint2(inputsIndices.y, id.y)]);
 	}*/
 
+	const uint N = Size;
+	const uint Half_N = N / 2;
+	const uint BitNum = log2(N);
+
+	uint Column = id.x * 2;
+	uint Row = id.y;
+	uint ReverseColumnIdx = reversebits(Column) >> (32 - BitNum);
+	uint PairColumnIdx = ReverseColumnIdx + Half_N;
+
+	uint2 Idx0 = uint2(ReverseColumnIdx, Row);
+	uint2 Idx1 = uint2(PairColumnIdx, Row);
+
+	float2 h[2];
+	h[0] = Buffer0[Idx0];
+	h[1] = Buffer0[Idx1];
+
+	//loop
+	fft2(h, id.x, N);
+	
+
+	uint2 BufferIdx = id.xy;
+	Buffer1[BufferIdx] = h[0];
+	Buffer1[BufferIdx + uint2(Half_N, 0)] = h[1];
+
 	//const uint N = 256;
 	//const uint Half_N = N / 2;
+	//float4 data = PrecomputedData[uint2(0, id.x)];
+	//uint2 inputsIndices = (uint2)data.ba;	
+	//float2 h = Buffer0[uint2(inputsIndices.x, id.y)];
+	//float2 hp = Buffer0[uint2(inputsIndices.y, id.y)];
+	//uint i = id.x;
+	//FullButterFlyCacheData[i] = h;
+	//FullButterFlyCacheData[i + Half_N] = hp;
+	//GroupMemoryBarrierWithGroupSync();
 
-	//uint Column = id.x * 2;
-	//uint Row = id.y;
-	//uint ReverseColumnIdx = reversebits(Column) >> (32 - 8);
-	//uint PairColumnIdx = ReverseColumnIdx + Half_N;
-
-	//uint2 Idx0 = uint2(ReverseColumnIdx, Row);
-	//uint2 Idx1 = uint2(PairColumnIdx, Row);
-
-	//float2 h[2];
-	//h[0] = Buffer0[Idx0];
-	//h[1] = Buffer0[Idx1];
-	//h[1].y *= -1;
-
-	////loop
-	//uint thread_id = id.x;
-
-	//fft2(h, thread_id, N);
-	//
-
-	//uint2 BufferIdx = id.xy;
-	//Buffer1[BufferIdx] = h[0];
-	//Buffer1[BufferIdx + uint2(Half_N, 0)] = h[1];
-
-	const uint N = 256;
-	uint thread_id = id.x;
-	float2 CacheH;
-	float4 data = PrecomputedData[uint2(0, id.x)];
-	uint2 inputsIndices = (uint2)data.ba;	
+	//uint logSize = (uint)log2(N);
+	//for (uint stage = 0; stage < logSize; stage++)
 	//{
-		FullButterFlyCacheData[id.x] = Buffer0[uint2(inputsIndices.x, id.y)]
-			+ ComplexMult(float2(data.r, -data.g), Buffer0[uint2(inputsIndices.y, id.y)]);	
+	//	bool flag = stage & 1;
 
-		CacheH = FullButterFlyCacheData[id.x];
+	//	float4 data = PrecomputedData[uint2(stage, id.x)];
+	//	uint2 inputsIndices = (uint2)data.ba;
 
-		GroupMemoryBarrierWithGroupSync();
+	//	//test
+	//	if (flag)
+	//	{
+	//		h = FullButterFlyCacheData[inputsIndices.x];
+	//	}
+	//	else
+	//	{
+	//		hp = FullButterFlyCacheData[inputsIndices.x];
+	//	}
 
-		uint logSize = 8;// (uint)log2(N);
+	//	float2 t = ComplexMult(float2(data.r, -data.g), FullButterFlyCacheData[inputsIndices.y]);		
 
-		//uint stage_no = 1;
-		//[unroll(8)]
+	//	float2 hp = FullButterFlyCacheData[inputsIndices.x] - t;
+	//	float2 h = FullButterFlyCacheData[inputsIndices.x] + t;
 
+	//	GroupMemoryBarrierWithGroupSync();
 
-		for (uint stage = 1; stage < logSize; stage++)
-		{
-			float4 data = PrecomputedData[uint2(stage, id.x)];
-			uint2 inputsIndices = (uint2)data.ba;
-			//stage_no++;
+	//	FullButterFlyCacheData[i] = h;
+	//	FullButterFlyCacheData[i + Half_N] = hp;
 
-			//GroupMemoryBarrierWithGroupSync();
-
-			/*FullButterFlyCacheData[id.x] = FullButterFlyCacheData[inputsIndices.x]
-				+ ComplexMult(float2(data.r, -data.g), FullButterFlyCacheData[inputsIndices.y]);*/
-			CacheH = FullButterFlyCacheData[inputsIndices.x]
-				+ ComplexMult(float2(data.r, -data.g), FullButterFlyCacheData[inputsIndices.y]);
-
-			GroupMemoryBarrierWithGroupSync();
-
-			FullButterFlyCacheData[id.x] = CacheH;
-
-			GroupMemoryBarrierWithGroupSync();
-		}		
-
-		
+	//	GroupMemoryBarrierWithGroupSync();
 	//}
-	GroupMemoryBarrierWithGroupSync();
+	////{
+	//	/*FullButterFlyCacheData[id.x] = Buffer0[uint2(inputsIndices.x, id.y)]
+	//		+ ComplexMult(float2(data.r, -data.g), Buffer0[uint2(inputsIndices.y, id.y)]);*/
 
-	Buffer1[id.xy] = FullButterFlyCacheData[id.x];
-	//Buffer1[id.xy+uint2(N/2, 0)] = h[1];
-	//Buffer1[id.xy] = float2(1.0, 0.0);
+	//	//test
+	//	//float2 h[2];
+	//	//h[0] = Buffer0[uint2(inputsIndices.x, id.y)];
+	//	//h[1] = Buffer0[uint2(inputsIndices.y, id.y)];
+	//	////float2 h[2];
+	//	//float2 du = h[1];// ComplexMult(float2(data.r, -data.g), h[1]);
+	//	//h[1] = h[0] - du;
+	//	//h[0] = h[0] + du;
+	//	//uint threadIdx = id.x;
+	//	//bool flag = threadIdx & 1;
+	//	//uint i = id.x;
+	//	//if (flag)
+	//	//{
+	//	//	FullButterFlyCacheData[i] = h[0];
+	//	//}
+	//	//else {
+	//	//	FullButterFlyCacheData[i] = h[1];
+	//	//}
+	//	////end test
 
-	GroupMemoryBarrierWithGroupSync();
+	//	//GroupMemoryBarrierWithGroupSync();
+
+	//	//uint logSize = 8;// (uint)log2(N);
+
+	//	////uint stage_no = 1;
+	//	//[unroll(8)]
+	//	//for (uint stage = 1; stage < logSize; stage++)
+	//	//{
+	//	//	float4 data = PrecomputedData[uint2(stage, id.x)];
+	//	//	uint2 inputsIndices = (uint2)data.ba;
+	//	//	//stage_no++;
+
+	//	//	//GroupMemoryBarrierWithGroupSync();
+
+	//	//	FullButterFlyCacheData[id.x] = FullButterFlyCacheData[inputsIndices.x]
+	//	//		+ ComplexMult(float2(data.r, -data.g), FullButterFlyCacheData[inputsIndices.y]);
+
+	//	//	GroupMemoryBarrierWithGroupSync();
+	//	//}		
+
+	//	//test	
+	////	float scale = 3.14159265359f * 0.5f; // Pi
+	////	uint stage_no = 1;
+	////	for (uint stride = 2; stride <= N; stride <<= 1, scale *= 0.5f)
+	////	{			
+	////		uint i = threadIdx ^ (stride - 1); //pair
+	////		uint j = threadIdx & (stride - 1); //curr
+
+	////		float4 data = PrecomputedData[uint2(stage_no, N / stride * j)];
+	////		++stage_no;
+
+	////		if (flag)
+	////		{
+	////			h[0] = FullButterFlyCacheData[i];
+	////		}
+	////		else {
+	////			h[1] = FullButterFlyCacheData[i];
+	////		}
+	////		
+	////		float sin, cos;
+	////		sincos(j * scale, sin, cos);
+
+	////		//float2 du = ComplexMult(float2(data.r, -data.g), h[1]);
+	////		float2 du = ComplexMult(float2(cos, sin), h[1]);
+	////		h[1] = h[0] - du;
+	////		h[0] = h[0] + du;
+
+	////		flag = threadIdx & stride;
+	////		if (flag)
+	////		{
+	////			FullButterFlyCacheData[i] = h[0];
+	////		}
+	////		else {
+	////			FullButterFlyCacheData[i] = h[1];
+	////		}
+
+	////		GroupMemoryBarrierWithGroupSync();
+	////	}
+	//////}
+	////GroupMemoryBarrierWithGroupSync();
+
+	//Buffer1[id.xy] = FullButterFlyCacheData[id.x];
+	//Buffer1[id.xy+uint2(Half_N, 0)] = FullButterFlyCacheData[i + Half_N];
+	////Buffer1[id.xy] = float2(1.0, 0.0);
+
+	//GroupMemoryBarrierWithGroupSync();
 }
 
 [numthreads(256, 1, 1)]
