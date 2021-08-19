@@ -45,7 +45,7 @@ public class FastFourierTransform
 
         fftShader.SetTexture(KERNEL_HORIZONTAL_STEP_FFT, PROP_ID_PRECOMPUTED_DATA, precomputedData);
         fftShader.SetTexture(KERNEL_HORIZONTAL_STEP_FFT, PROP_ID_BUFFER0, input);
-        fftShader.SetTexture(KERNEL_HORIZONTAL_STEP_FFT, PROP_ID_BUFFER1, buffer);
+        //fftShader.SetTexture(KERNEL_HORIZONTAL_STEP_FFT, PROP_ID_BUFFER1, buffer);
         for (int i = 0; i < logSize; i++)
         {
             pingPong = !pingPong;
@@ -56,7 +56,7 @@ public class FastFourierTransform
 
         fftShader.SetTexture(KERNEL_VERTICAL_STEP_FFT, PROP_ID_PRECOMPUTED_DATA, precomputedData);
         fftShader.SetTexture(KERNEL_VERTICAL_STEP_FFT, PROP_ID_BUFFER0, input);
-        fftShader.SetTexture(KERNEL_VERTICAL_STEP_FFT, PROP_ID_BUFFER1, buffer);
+        //fftShader.SetTexture(KERNEL_VERTICAL_STEP_FFT, PROP_ID_BUFFER1, buffer);
         for (int i = 0; i < logSize; i++)
         {
             pingPong = !pingPong;
@@ -83,7 +83,7 @@ public class FastFourierTransform
 
         fftShader.SetTexture(KERNEL_HORIZONTAL_STEP_IFFT, PROP_ID_PRECOMPUTED_DATA, precomputedData);
         fftShader.SetTexture(KERNEL_HORIZONTAL_STEP_IFFT, PROP_ID_BUFFER0, input);
-        fftShader.SetTexture(KERNEL_HORIZONTAL_STEP_IFFT, PROP_ID_BUFFER1, buffer);
+        fftShader.SetTexture(KERNEL_HORIZONTAL_STEP_IFFT, PROP_ID_BUFFER_DXDZ, buffer);
         //for (int i = 0; i < logSize; i++)
         //{
         //    pingPong = !pingPong;
@@ -97,7 +97,7 @@ public class FastFourierTransform
 
         fftShader.SetTexture(KERNEL_VERTICAL_STEP_IFFT, PROP_ID_PRECOMPUTED_DATA, precomputedData);
         fftShader.SetTexture(KERNEL_VERTICAL_STEP_IFFT, PROP_ID_BUFFER0, input);
-        fftShader.SetTexture(KERNEL_VERTICAL_STEP_IFFT, PROP_ID_BUFFER1, buffer);
+        fftShader.SetTexture(KERNEL_VERTICAL_STEP_IFFT, PROP_ID_BUFFER_DXDZ, buffer);
         //for (int i = 0; i < logSize; i++)
         //{
         //    pingPong = !pingPong;
@@ -133,6 +133,49 @@ public class FastFourierTransform
         //}
     }
 
+    public void IFFT2D(RenderTexture H0, RenderTexture DxDz, RenderTexture DyDxz, RenderTexture DyxDyz, RenderTexture DxxDzz,
+        RenderTexture bufferTmp0, RenderTexture bufferTmp1, RenderTexture WaveData, float time)
+    {
+        int logSize = (int)Mathf.Log(size, 2);
+        //bool pingPong = false;
+
+        fftShader.SetTexture(KERNEL_HORIZONTAL_STEP_IFFT, PROP_ID_PRECOMPUTED_DATA, precomputedData);
+        fftShader.SetTexture(KERNEL_HORIZONTAL_STEP_IFFT, PROP_ID_BUFFER0, H0);
+        fftShader.SetTexture(KERNEL_HORIZONTAL_STEP_IFFT, PROP_ID_BUFFER_TMP0, bufferTmp0);
+        fftShader.SetTexture(KERNEL_HORIZONTAL_STEP_IFFT, PROP_ID_BUFFER_TMP1, bufferTmp1);
+        fftShader.SetTexture(KERNEL_HORIZONTAL_STEP_IFFT, WAVE_DATA_PROP, WaveData);
+        fftShader.SetFloat(TIME_PROP, time);
+        //for (int i = 0; i < logSize; i++)
+        //{
+        //    pingPong = !pingPong;
+        //    fftShader.SetInt(PROP_ID_STEP, i);
+        //    fftShader.SetBool(PROP_ID_PINGPONG, pingPong);
+        //    fftShader.Dispatch(KERNEL_HORIZONTAL_STEP_IFFT, size / LOCAL_WORK_GROUPS_X, size / LOCAL_WORK_GROUPS_Y, 1);
+        //}
+        //pingPong = !pingPong;
+        //fftShader.Dispatch(KERNEL_HORIZONTAL_STEP_IFFT, 1, size/2+1, 1);
+        fftShader.Dispatch(KERNEL_HORIZONTAL_STEP_IFFT, 1, size, 1);
+
+        fftShader.SetTexture(KERNEL_VERTICAL_STEP_IFFT, PROP_ID_PRECOMPUTED_DATA, precomputedData);
+        fftShader.SetTexture(KERNEL_VERTICAL_STEP_IFFT, PROP_ID_BUFFER0, H0);
+        fftShader.SetTexture(KERNEL_VERTICAL_STEP_IFFT, PROP_ID_BUFFER_TMP0, bufferTmp0);
+        fftShader.SetTexture(KERNEL_VERTICAL_STEP_IFFT, PROP_ID_BUFFER_TMP1, bufferTmp1);
+
+        fftShader.SetTexture(KERNEL_VERTICAL_STEP_IFFT, PROP_ID_BUFFER_DXDZ, DxDz);
+        fftShader.SetTexture(KERNEL_VERTICAL_STEP_IFFT, PROP_ID_BUFFER_DYDXZ, DyDxz);
+        fftShader.SetTexture(KERNEL_VERTICAL_STEP_IFFT, PROP_ID_BUFFER_DYXDYZ, DyxDyz);
+        fftShader.SetTexture(KERNEL_VERTICAL_STEP_IFFT, PROP_ID_BUFFER_DXXDZZ, DxxDzz);
+        //for (int i = 0; i < logSize; i++)
+        //{
+        //    pingPong = !pingPong;
+        //    fftShader.SetInt(PROP_ID_STEP, i);
+        //    fftShader.SetBool(PROP_ID_PINGPONG, pingPong);
+        //    fftShader.Dispatch(KERNEL_VERTICAL_STEP_IFFT, size / LOCAL_WORK_GROUPS_X, size / LOCAL_WORK_GROUPS_Y, 1);
+        //}
+        //pingPong = !pingPong;
+        fftShader.Dispatch(KERNEL_VERTICAL_STEP_IFFT, 1, size, 1);        
+    }
+
     RenderTexture PrecomputeTwiddleFactorsAndInputIndices()
     {
         int logSize = (int)Mathf.Log(size, 2);
@@ -161,9 +204,16 @@ public class FastFourierTransform
     // Property IDs:
     readonly int PROP_ID_PRECOMPUTE_BUFFER = Shader.PropertyToID("PrecomputeBuffer");
     readonly int PROP_ID_PRECOMPUTED_DATA = Shader.PropertyToID("PrecomputedData");
-    readonly int PROP_ID_BUFFER0 = Shader.PropertyToID("Buffer0");
-    readonly int PROP_ID_BUFFER1 = Shader.PropertyToID("Buffer1");
+    readonly int WAVE_DATA_PROP = Shader.PropertyToID("WavesData");
+    readonly int PROP_ID_BUFFER0 = Shader.PropertyToID("H0");
+    readonly int PROP_ID_BUFFER_TMP0 = Shader.PropertyToID("BufferTmp0");
+    readonly int PROP_ID_BUFFER_TMP1 = Shader.PropertyToID("BufferTmp1");
+    readonly int PROP_ID_BUFFER_DXDZ = Shader.PropertyToID("DxDz");
+    readonly int PROP_ID_BUFFER_DYDXZ = Shader.PropertyToID("DyDxz");
+    readonly int PROP_ID_BUFFER_DYXDYZ = Shader.PropertyToID("DyxDyz");
+    readonly int PROP_ID_BUFFER_DXXDZZ = Shader.PropertyToID("DxxDzz");
     readonly int PROP_ID_SIZE = Shader.PropertyToID("Size");
     readonly int PROP_ID_STEP = Shader.PropertyToID("Step");
     readonly int PROP_ID_PINGPONG = Shader.PropertyToID("PingPong");
+    readonly int TIME_PROP = Shader.PropertyToID("Time");
 }
